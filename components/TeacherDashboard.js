@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
-const API_BASE_URL = 'http://192.168.10.168:5000';
-
+const API_BASE_URL = 'http://10.174.251.239:5000';
 const TeacherDashboard = ({ user, token }) => {
   const [selectedCourse, setSelectedCourse] = useState('CSE101');
   const [qrData, setQrData] = useState(null);

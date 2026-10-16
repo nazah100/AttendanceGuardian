@@ -10,8 +10,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ⚠️ আপনার ল্যাপটপের Local IP বসানো আছে নিশ্চিত করুন
-const API_BASE_URL = 'http://192.168.10.168:5000/api/auth';
+const API_BASE_URL = 'http://10.174.251.239:5000/api/auth';
 
 interface UserProfile {
   _id: string;
@@ -20,12 +19,14 @@ interface UserProfile {
   role?: string;
 }
 
-export default function DashboardScreen({ navigation }: any) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function DashboardScreen({ route, navigation }: any) {
+  const [user, setUser] = useState<UserProfile | null>(route?.params?.user || null);
+  const [loading, setLoading] = useState(!route?.params?.user);
 
   useEffect(() => {
-    fetchUserProfile();
+    if (!user) {
+      fetchUserProfile();
+    }
   }, []);
 
   const fetchUserProfile = async () => {
@@ -91,7 +92,7 @@ export default function DashboardScreen({ navigation }: any) {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => Alert.alert('Notice', 'Attendance module coming in Step 2!')}
+            onPress={() => navigation.navigate('Attendance')}
           >
             <Text style={styles.primaryButtonText}>
               {user?.role === 'Teacher' ? 'Take Attendance' : 'Give Attendance'}

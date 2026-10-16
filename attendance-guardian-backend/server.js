@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const attendanceRoutes = require('./routes/attendanceRoutes');
 require('dotenv').config();
 
 const app = express();
@@ -16,6 +17,7 @@ mongoose.connect(MONGO_URI)
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/attendance', attendanceRoutes);
 
 app.get('/', (req, res) => {
   res.send('Attendance Guardian Backend is Running!');
@@ -24,5 +26,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://192.168.10.168:${PORT}`);
+  console.log(`Server running on http://10.174.251.239:${PORT}`);
 });

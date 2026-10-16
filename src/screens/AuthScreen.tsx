@@ -1,35 +1,43 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
+  Text,
   TextInput,
   TouchableOpacity,
+  StyleSheet,
   Alert,
-  SafeAreaView,
+  ActivityIndicator,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-const API_BASE_URL = 'http://192.168.10.168:5000/api/auth';
+
+const API_BASE_URL = 'http://10.174.251.239:5000';
 
 export default function AuthScreen({ navigation }: any) {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!email || !password || (!isLogin && !username)) {
-      Alert.alert('Error', 'Please fill in all required fields!');
+    if (!email || !password || (!isLogin && !name)) {
+      Alert.alert('Error', 'সবগুলো ফিল্ড পূরণ করুন');
       return;
     }
 
     setLoading(true);
-    const endpoint = isLogin ? '/login' : '/register';
-    const payload = isLogin ? { email, password } : { username, email, password };
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+
+    // ব্যাকএন্ডের চাহিদা অনুযায়ী role প্রথম অক্ষর বড় হাতের ('Student'/'Teacher') করা হয়েছে
+    const formattedRole = role === 'teacher' ? 'Teacher' : 'Student';
+
+    // ব্যাকএন্ডে 'name' এর বদলে 'username' পাঠানো হচ্ছে
+    const payload = isLogin
+      ? { email, password }
+      : { username: name, email, password, role: formattedRole };
 
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -39,111 +47,116 @@ export default function AuthScreen({ navigation }: any) {
       });
 
       const data = await response.json();
-      setLoading(false);
 
       if (response.ok) {
         if (isLogin) {
-          // JWT Token ফোনে সেভ করা হচ্ছে
-          await AsyncStorage.setItem('userToken', data.token);
-          navigation.replace('Dashboard');
+          navigation.replace('Dashboard', { user: data.user, token: data.token });
         } else {
-          Alert.alert('Success', 'Account created! Please login now.');
+          Alert.alert('Success', 'রেজিস্ট্রেশন সফল হয়েছে! এখন লগইন করুন।');
           setIsLogin(true);
         }
       } else {
-        Alert.alert('Authentication Failed', data.message || 'Something went wrong');
+        const errorMessage = data.message || data.error || data.msg || JSON.stringify(data);
+        Alert.alert('Error', errorMessage);
       }
     } catch (error) {
+      Alert.alert('Error', 'সার্ভারে কানেক্ট করা যাচ্ছে না। IP ও Wi-Fi চেক করুন।');
+    } finally {
       setLoading(false);
-      Alert.alert('Network Error', 'Cannot connect to backend server.');
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.innerContainer}
-      >
-        <Text style={styles.title}>Attendance Guardian</Text>
-        <Text style={styles.subtitle}>
-          {isLogin ? 'Welcome back! Please login.' : 'Create a new account.'}
-        </Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.title}>{isLogin ? 'Welcome Back' : 'Create Account'}</Text>
 
         {!isLogin && (
           <TextInput
             style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#888"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
+            placeholder="Full Name"
+            placeholderTextColor="#94a3b8"
+            value={name}
+            onChangeText={setName}
           />
         )}
 
         <TextInput
           style={styles.input}
-          placeholder="Email Address"
-          placeholderTextColor="#888"
-          value={email}
-          onChangeText={setEmail}
+          placeholder="Email"
+          placeholderTextColor="#94a3b8"
           keyboardType="email-address"
           autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
         />
 
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor="#888"
+          placeholderTextColor="#94a3b8"
+          secureTextEntry
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
         />
+
+        {!isLogin && (
+          <>
+            <Text style={styles.label}>Select Role:</Text>
+            <View style={styles.roleContainer}>
+              <TouchableOpacity
+                style={[styles.roleBtn, role === 'student' && styles.activeRoleBtn]}
+                onPress={() => setRole('student')}
+              >
+                <Text style={[styles.roleText, role === 'student' && styles.activeRoleText]}>
+                  Student
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.roleBtn, role === 'teacher' && styles.activeRoleBtn]}
+                onPress={() => setRole('teacher')}
+              >
+                <Text style={[styles.roleText, role === 'teacher' && styles.activeRoleText]}>
+                  Teacher
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color="#ffffff" />
           ) : (
-            <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Sign Up'}</Text>
+            <Text style={styles.buttonText}>{isLogin ? 'Login' : 'Register'}</Text>
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.toggleButton} onPress={() => setIsLogin(!isLogin)}>
-          <Text style={styles.toggleText}>
-            {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Login'}
+        <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
+          <Text style={styles.linkText}>
+            {isLogin ? "Don't have an account? Register" : 'Already have an account? Login'}
           </Text>
         </TouchableOpacity>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
-  innerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  title: { fontSize: 30, fontWeight: 'bold', color: '#38BDF8', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#94A3B8', marginBottom: 32 },
-  input: {
-    width: '100%',
-    height: 52,
-    backgroundColor: '#1E293B',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    color: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  button: {
-    width: '100%',
-    height: 52,
-    backgroundColor: '#0284C7',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  buttonText: { color: '#FFFFFF', fontSize: 17, fontWeight: 'bold' },
-  toggleButton: { marginTop: 20 },
-  toggleText: { color: '#38BDF8', fontSize: 14 },
+  container: { flexGrow: 1, padding: 20, justifyContent: 'center', backgroundColor: '#0f172a' },
+  title: { fontSize: 26, fontWeight: 'bold', color: '#ffffff', marginBottom: 20, textAlign: 'center' },
+  input: { backgroundColor: '#1e293b', color: '#ffffff', padding: 14, borderRadius: 8, marginBottom: 12 },
+  label: { color: '#94a3b8', fontSize: 14, marginBottom: 8, marginTop: 4 },
+  roleContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  roleBtn: { flex: 1, paddingVertical: 12, marginHorizontal: 4, borderRadius: 8, backgroundColor: '#334155', alignItems: 'center' },
+  activeRoleBtn: { backgroundColor: '#0284c7' },
+  roleText: { color: '#cbd5e1', fontWeight: 'bold' },
+  activeRoleText: { color: '#ffffff' },
+  button: { backgroundColor: '#0284c7', padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  buttonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
+  linkText: { color: '#38bdf8', marginTop: 16, textAlign: 'center' }
 });
