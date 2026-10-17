@@ -7,33 +7,66 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  TextInput,
 } from 'react-native';
 
 export default function SubjectDetailScreen({ route }: any) {
-const subjectName = route?.params?.subjectName || 'Select Subject';
+  const subjectName = route?.params?.subjectName || 'Select Subject';
 
-  // Dynamic Attendance Calculation States
-  const [totalClasses, setTotalClasses] = useState(25);
-  const [attendedClasses, setAttendedClasses] = useState(18);
+  // Dynamic Attendance States (প্রাথমিক অবস্থায় ০ থাকবে)
+  const [totalClasses, setTotalClasses] = useState(0);
+  const [attendedClasses, setAttendedClasses] = useState(0);
 
-  // Weekday Routine State (Selected days for classes)
-  const [selectedDays, setSelectedDays] = useState<string[]>(['Sunday', 'Tuesday', 'Thursday']);
+  // User Custom Input States
+  const [inputTotal, setInputTotal] = useState('');
+  const [inputAttended, setInputAttended] = useState('');
 
-  const currentPercentage = Math.round((attendedClasses / totalClasses) * 100);
+  // Weekday Routine States
+  const [selectedDays, setSelectedDays] = useState<string[]>(['Sunday', 'Tuesday']);
+  const [classTime, setClassTime] = useState('10:00 AM');
+  const [inputTime, setInputTime] = useState('');
 
-  // Predictor Calculations
-  const percentageIfSkip = Math.round((attendedClasses / (totalClasses + 1)) * 100);
+  const currentPercentage = totalClasses > 0 ? Math.round((attendedClasses / totalClasses) * 100) : 0;
+  const percentageIfSkip = totalClasses > 0 ? Math.round((attendedClasses / (totalClasses + 1)) * 100) : 0;
 
-  // Calculate how many consecutive classes needed to reach 75%
+  // Safe Calculator Function to avoid Infinite Loop
   const calculateClassesToReachTarget = (targetPercent: number) => {
+    if (totalClasses === 0) return 0;
+    if ((attendedClasses / totalClasses) * 100 >= targetPercent) return 0;
+
     let addAttended = 0;
-    while (((attendedClasses + addAttended) / (totalClasses + addAttended)) * 100 < targetPercent) {
+    while (
+      ((attendedClasses + addAttended) / (totalClasses + addAttended)) * 100 < targetPercent &&
+      addAttended < 100
+    ) {
       addAttended++;
     }
     return addAttended;
   };
 
   const neededFor75 = calculateClassesToReachTarget(75);
+
+  // User Dynamic Attendance Set Handler
+  const handleSetAttendance = () => {
+    const total = parseInt(inputTotal, 10);
+    const attended = parseInt(inputAttended, 10);
+
+    if (isNaN(total) || isNaN(attended)) {
+      Alert.alert('Notice', 'অনুগ্রহ করে সঠিক সংখ্যা লিখুন');
+      return;
+    }
+
+    if (attended > total) {
+      Alert.alert('Error', 'Attended class, Total class-এর চেয়ে বেশি হতে পারে না!');
+      return;
+    }
+
+    setTotalClasses(total);
+    setAttendedClasses(attended);
+    setInputTotal('');
+    setInputAttended('');
+    Alert.alert('Success', 'অ্যাটেনডেন্স সফলভাবে সেট করা হয়েছে!');
+  };
 
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {
@@ -43,14 +76,24 @@ const subjectName = route?.params?.subjectName || 'Select Subject';
     }
   };
 
+  const handleSaveTime = () => {
+    if (!inputTime.trim()) {
+      Alert.alert('Notice', 'ক্লাসের সময় লিখুন');
+      return;
+    }
+    setClassTime(inputTime.trim());
+    setInputTime('');
+    Alert.alert('Success', 'ক্লাসের সময় আপডেট করা হয়েছে!');
+  };
+
   const handleSkipCheck = () => {
     Alert.alert(
       'Can I Skip Today?',
-      `If you skip class today, your attendance will drop from  ${currentPercentage}% to ${percentageIfSkip}% .`
+      `If you skip class today, your attendance will drop from ${currentPercentage}% to ${percentageIfSkip}%.`
     );
   };
 
-  const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', ];
+  const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -62,23 +105,56 @@ const subjectName = route?.params?.subjectName || 'Select Subject';
           <Text style={styles.subText}>Total: {totalClasses} | Attended: {attendedClasses}</Text>
         </View>
 
+        {/* User Attendance Input Section */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>Set Your Initial Attendance:</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.numInput}
+              placeholder="Total Classes"
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={inputTotal}
+              onChangeText={setInputTotal}
+            />
+            <TextInput
+              style={styles.numInput}
+              placeholder="Attended Classes"
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={inputAttended}
+              onChangeText={setInputAttended}
+            />
+            <TouchableOpacity style={styles.setBtn} onPress={handleSetAttendance}>
+              <Text style={styles.setBtnText}>Set</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Dynamic Warning Box */}
-        <View style={styles.warningBox}>
-          <Text style={styles.warningText}>
-            ⚠️ Missing 1 class will drop your attendance to {percentageIfSkip}%!
-          </Text>
-        </View>
+        {totalClasses > 0 && (
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>
+              ⚠️ Missing 1 class will drop your attendance to {percentageIfSkip}%!
+            </Text>
+          </View>
+        )}
 
-        {/* Dynamic Positive/Recovery Box */}
-        <View style={styles.successBox}>
-          <Text style={styles.successText}>
-            ✅ Attend {neededFor75} more classes in a row to reach 75%!
-          </Text>
-        </View>
+        {/* Dynamic Recovery Box */}
+        {totalClasses > 0 && (
+          <View style={styles.successBox}>
+            <Text style={styles.successText}>
+              {neededFor75 > 0
+                ? `✅ Attend ${neededFor75} more classes in a row to reach 75%!`
+                : `🎉 Great! You are already at or above 75%!`}
+            </Text>
+          </View>
+        )}
 
-        {/* Weekday Routine Tracker Section */}
-        <View style={styles.routineSection}>
-          <Text style={styles.sectionTitle}>Class Days (Weekly Routine):</Text>
+        {/* Weekly Routine Setup */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>Set Weekly Routine:</Text>
+          <Text style={styles.inputLabel}>Select Days:</Text>
           <View style={styles.dayContainer}>
             {weekDays.map((day) => {
               const isSelected = selectedDays.includes(day);
@@ -95,26 +171,23 @@ const subjectName = route?.params?.subjectName || 'Select Subject';
               );
             })}
           </View>
-        </View>
 
-        {/* This Week's Schedule Log */}
-        <View style={styles.scheduleSection}>
-          <Text style={styles.sectionTitle}>This Week's Classes:</Text>
-          <View style={styles.scheduleCard}>
-            <Text style={styles.scheduleDay}>Sun, Class 1</Text>
-            <Text style={[styles.badge, styles.badgePresent]}>Present</Text>
-          </View>
-          <View style={styles.scheduleCard}>
-            <Text style={styles.scheduleDay}>Tue, Class 2</Text>
-            <Text style={[styles.badge, styles.badgeAbsent]}>Absent</Text>
-          </View>
-          <View style={styles.scheduleCard}>
-            <Text style={styles.scheduleDay}>Thu, Class 3</Text>
-            <Text style={[styles.badge, styles.badgeUpcoming]}>Upcoming</Text>
+          <Text style={styles.inputLabel}>Class Time (Current: {classTime}):</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.numInput}
+              placeholder="e.g. 10:00 AM"
+              placeholderTextColor="#94a3b8"
+              value={inputTime}
+              onChangeText={setInputTime}
+            />
+            <TouchableOpacity style={styles.setBtn} onPress={handleSaveTime}>
+              <Text style={styles.setBtnText}>Set Time</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Interactive Attendance Buttons */}
+        {/* Interactive Attendance Action Buttons */}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.presentBtn}
@@ -134,7 +207,7 @@ const subjectName = route?.params?.subjectName || 'Select Subject';
           </TouchableOpacity>
         </View>
 
-        {/* "Can I Skip Today?" Button */}
+        {/* Skip Predictor Button */}
         <TouchableOpacity style={styles.skipBtn} onPress={handleSkipCheck}>
           <Text style={styles.skipBtnText}>Can I skip today?</Text>
         </TouchableOpacity>
@@ -158,6 +231,27 @@ const styles = StyleSheet.create({
   subjectCode: { color: '#94a3b8', fontSize: 18, fontWeight: '600' },
   percentageText: { color: '#ffffff', fontSize: 42, fontWeight: 'bold', marginVertical: 8 },
   subText: { color: '#64748b', fontSize: 14 },
+  inputSection: { backgroundColor: '#1e293b', padding: 14, borderRadius: 12, marginBottom: 16 },
+  sectionTitle: { color: '#f8fafc', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  inputLabel: { color: '#94a3b8', fontSize: 13, marginBottom: 6 },
+  inputRow: { flexDirection: 'row', gap: 8 },
+  numInput: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+    color: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  setBtn: {
+    backgroundColor: '#0284c7',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: 6,
+  },
+  setBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
   warningBox: {
     backgroundColor: '#451a03',
     borderColor: '#78350f',
@@ -176,35 +270,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   successText: { color: '#6ee7b7', fontSize: 14, fontWeight: '500' },
-  routineSection: { marginBottom: 16 },
-  sectionTitle: { color: '#cbd5e1', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  dayContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dayContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   dayChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#1e293b',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#0f172a',
     borderWidth: 1,
     borderColor: '#334155',
   },
   dayChipSelected: { backgroundColor: '#0284c7', borderColor: '#0284c7' },
-  dayText: { color: '#94a3b8', fontWeight: '500' },
+  dayText: { color: '#94a3b8', fontSize: 12, fontWeight: '500' },
   dayTextSelected: { color: '#ffffff', fontWeight: 'bold' },
-  scheduleSection: { marginBottom: 16 },
-  scheduleCard: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  scheduleDay: { color: '#f8fafc', fontSize: 14 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, fontSize: 12, fontWeight: 'bold' },
-  badgePresent: { backgroundColor: '#166534', color: '#4ade80' },
-  badgeAbsent: { backgroundColor: '#991b1b', color: '#fca5a5' },
-  badgeUpcoming: { backgroundColor: '#1e3a8a', color: '#93c5fd' },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   presentBtn: { flex: 1, backgroundColor: '#16a34a', padding: 14, borderRadius: 8, marginRight: 6, alignItems: 'center' },
   absentBtn: { flex: 1, backgroundColor: '#dc2626', padding: 14, borderRadius: 8, marginLeft: 6, alignItems: 'center' },

@@ -11,6 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+// ১. AsyncStorage ইম্পোর্ট করা হয়েছে
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'http://10.174.251.239:5000';
 
@@ -31,10 +33,8 @@ export default function AuthScreen({ navigation }: any) {
     setLoading(true);
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
 
-    // ব্যাকএন্ডের চাহিদা অনুযায়ী role প্রথম অক্ষর বড় হাতের ('Student'/'Teacher') করা হয়েছে
     const formattedRole = role === 'teacher' ? 'Teacher' : 'Student';
 
-    // ব্যাকএন্ডে 'name' এর বদলে 'username' পাঠানো হচ্ছে
     const payload = isLogin
       ? { email, password }
       : { username: name, email, password, role: formattedRole };
@@ -50,9 +50,14 @@ export default function AuthScreen({ navigation }: any) {
 
       if (response.ok) {
         if (isLogin) {
+          // ২. লগইন সফল হলে টোকেনটি AsyncStorage-এ 'userToken' নামে সেভ করা হচ্ছে
+          if (data.token) {
+            await AsyncStorage.setItem('userToken', data.token);
+          }
+          
           navigation.replace('Dashboard', { user: data.user, token: data.token });
         } else {
-          Alert.alert('Success', 'রেজিস্ট্রেশন সফল হয়েছে! এখন লগইন করুন।');
+          Alert.alert('Success', 'রেজিস্ট্রেশন সফল হয়েছে! এখন লগইন করুন।');
           setIsLogin(true);
         }
       } else {
