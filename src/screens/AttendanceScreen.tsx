@@ -15,8 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'http://10.174.251.239:5000';
 
-export default function AttendanceScreen() {
-  // ১. কোনো ডিফল্ট কোর্স নাম রাখা হয়নি (সম্পূর্ণ খালি অ্যারেই)
+export default function AttendanceScreen({ navigation }: any) {
   const [courses, setCourses] = useState<string[]>([]);
   const [newCourse, setNewCourse] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('');
@@ -26,7 +25,6 @@ export default function AttendanceScreen() {
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // ইউজারের ইচ্ছামতো নতুন কোর্স ড্রপডাউনে যুক্ত করার ফাংশন
   const handleAddCourse = () => {
     if (!newCourse.trim()) {
       Alert.alert('Notice', 'কোর্সের নাম লিখুন');
@@ -35,14 +33,14 @@ export default function AttendanceScreen() {
 
     const formattedCourse = newCourse.trim();
     if (courses.includes(formattedCourse)) {
-      Alert.alert('Notice', 'এই কোর্সটি আগেই যুক্ত করা হয়েছে');
+      Alert.alert('Notice', 'এই কোর্সটি আগেই যুক্ত করা হয়েছে');
       return;
     }
 
     setCourses((prevCourses) => [...prevCourses, formattedCourse]);
-    setSelectedCourse(formattedCourse); // নতুন অ্যাড হওয়া কোর্সটি অটো-সিলেক্ট হবে
-    setNewCourse(''); // ইনপুট বক্স খালি করা
-    Alert.alert('Success', 'নতুন কোর্স যুক্ত হয়েছে!');
+    setSelectedCourse(formattedCourse);
+    setNewCourse('');
+    Alert.alert('Success', 'নতুন কোর্স যুক্ত হয়েছে!');
   };
 
   const fetchAttendanceLogs = async (pageNum: number) => {
@@ -51,6 +49,11 @@ export default function AttendanceScreen() {
 
     try {
       const token = await AsyncStorage.getItem('userToken');
+
+      if (!token) {
+        navigation.replace('Auth');
+        return;
+      }
 
       const response = await fetch(
         `${API_BASE_URL}/api/attendance/history?page=${pageNum}&limit=10`,
@@ -75,7 +78,14 @@ export default function AttendanceScreen() {
           setHasMore(false);
         }
       } else {
-        Alert.alert('Error', data.message || 'Failed to fetch logs');
+        // টোকেন ইনভ্যালিড বা মেয়াদ শেষ হলে অটোমেটিক লগইন স্ক্রিনে নিয়ে যাবে
+        if (response.status === 401 || data.message?.includes('token')) {
+          await AsyncStorage.removeItem('userToken');
+          Alert.alert('Session Expired', 'Please login again.');
+          navigation.replace('Auth');
+        } else {
+          Alert.alert('Error', data.message || 'Failed to fetch logs');
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Cannot connect to backend server');
@@ -132,7 +142,23 @@ export default function AttendanceScreen() {
         </Picker>
       </View>
 
-      {/* ৩. অটেনডেন্স হিস্ট্রি (Paginated) */}
+      {/* ৩. Subject Details & Skip Predictor নেভিগেশন বাটন */}
+      <TouchableOpacity
+        style={styles.detailBtn}
+        onPress={() => {
+          if (!selectedCourse) {
+            Alert.alert('Notice', 'অনুগ্রহ করে প্রথমে একটি কোর্স সিলেক্ট বা অ্যাড করুন');
+            return;
+          }
+          navigation.navigate('SubjectDetail', { subjectName: selectedCourse });
+        }}
+      >
+        <Text style={styles.detailBtnText}>
+          View Subject Details & Skip Predictor
+        </Text>
+      </TouchableOpacity>
+
+      {/* ৪. অটেনডেন্স হিস্ট্রি (Paginated) */}
       <Text style={styles.label}>Attendance History (Paginated):</Text>
       <FlatList
         data={logs}
@@ -190,9 +216,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#334155',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   picker: { color: '#ffffff' },
+  detailBtn: {
+    backgroundColor: '#0369a1',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  detailBtnText: { color: '#ffffff', fontWeight: 'bold' },
   logCard: {
     backgroundColor: '#1e293b',
     padding: 14,

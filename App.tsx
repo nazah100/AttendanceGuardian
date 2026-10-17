@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import AuthScreen from './src/screens/AuthScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen'; // 👈 ১. নতুন স্ক্রিন ইমপোর্ট করা হলো
+import SubjectDetailScreen from './src/screens/SubjectDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,6 +50,7 @@ export default function App() {
         <Stack.Screen name="Dashboard" component={DashboardScreen} />
         {/* 👈 ২. AttendanceScreen স্ট্যাকে যুক্ত করা হলো */}
         <Stack.Screen name="Attendance" component={AttendanceScreen} />
+        <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
