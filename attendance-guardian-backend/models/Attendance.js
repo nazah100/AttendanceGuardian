@@ -2,36 +2,39 @@ const mongoose = require('mongoose');
 
 const attendanceSchema = new mongoose.Schema(
   {
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // User মডেলের সাথে সম্পর্ক যুক্ত করা হলো
-      required: true,
-    },
-    teacher: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      required: true,
     },
-    subject: {
-      type: String,
-      required: [true, 'Subject is required'],
-      trim: true,
+    subjectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subject',
+      required: true,
     },
     status: {
       type: String,
       enum: ['Present', 'Absent', 'Late'],
       default: 'Present',
     },
+    weight: {
+      type: Number,
+      default: 1,
+    },
+    latitude: {
+      type: Number,
+    },
+    longitude: {
+      type: Number,
+    },
     date: {
-      type: String, // 'YYYY-MM-DD' ফরম্যাটে ডেট সেভ রাখার জন্য
-      required: true,
+      type: Date,
+      default: Date.now,
     },
   },
   {
-    timestamps: true, // createdAt ও updatedAt স্বয়ংক্রিয়ভাবে তৈরি হবে
+    timestamps: true,
   }
 );
-
-// একই স্টুডেন্ট যাতে একই দিনে একই সাবজেক্টে একাধিকবার এন্ট্রি দিতে না পারে
-attendanceSchema.index({ student: 1, subject: 1, date: 1 }, { unique: true });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

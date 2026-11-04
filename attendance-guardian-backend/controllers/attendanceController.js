@@ -1,80 +1,92 @@
 const Attendance = require('../models/Attendance');
+const Subject = require('../models/Subject');
 
-// ১. নতুন উপস্থিতি সাবমিট/মার্ক করা
+// Geofence Attendance Mark করার কন্ট্রোলার
 exports.markAttendance = async (req, res) => {
   try {
-    const { studentId, subject, status, date } = req.body;
+    const { subjectId, latitude, longitude, duration } = req.body;
+    const userId = req.user._id || req.user.id;
 
-    const currentUserId = req.user._id; 
-    const currentUserRole = req.user.role;
-
-    const targetStudentId = studentId || (currentUserRole === 'Student' ? currentUserId : null);
-
-    if (!targetStudentId) {
-      return res.status(400).json({ message: 'Student ID is required' });
+    if (!subjectId) {
+      return res.status(400).json({ success: false, message: 'Subject ID is required' });
     }
 
-    const attendanceDate = date || new Date().toISOString().split('T')[0];
+    // ১. আজকের তারিখের শুরু ও শেষ
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
 
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // ২. চেক করা আজ অলরেডি এই সাবজেক্টে এটেনডেন্স দেয়া হয়েছে কিনা
     const existingAttendance = await Attendance.findOne({
-      student: targetStudentId,
-      subject,
-      date: attendanceDate,
+      userId,
+      subjectId,
+      date: { $gte: startOfDay,$lte: endOfDay },
     });
 
     if (existingAttendance) {
-      return res.status(400).json({ message: 'Attendance already recorded for today!' });
+      return res.status(400).json({
+        success: false,
+        message: 'Attendance already recorded for today!',
+      });
     }
 
-    const newAttendance = await Attendance.create({
-      student: targetStudentId,
-      teacher: currentUserRole === 'Teacher' ? currentUserId : undefined,
-      subject,
-      status: status || 'Present',
-      date: attendanceDate,
+    // ৩. Duration Weight Calculation
+    const incrementValue = Math.round((duration || 45) / 45) || 1;
+
+    // ৪. নতুন Attendance Record সেভ
+    const newAttendance = new Attendance({
+      userId,
+      subjectId,
+      latitude,
+      longitude,
+      status: 'Present',
+      weight: incrementValue,
+      date: new Date(),
     });
 
-    res.status(201).json({
-      message: 'Attendance recorded successfully',
+    await newAttendance.save();
+
+    // ৫. Subject model update
+    const updatedSubject = await Subject.findByIdAndUpdate(
+      subjectId,
+      {
+        $inc: {
+          attendedClasses: incrementValue,
+          totalClasses: incrementValue,
+        },
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Attendance recorded successfully! (+${incrementValue} period)`,
       attendance: newAttendance,
+      subject: updatedSubject,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server Error', error: error.message });
+    console.error('Mark Attendance Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message,
+    });
   }
 };
 
-// ২. ব্যবহারকারীর এটেন্ডেন্স হিস্ট্রি দেখার API (Pagination সহ)
+// Attendance History বের করার কন্ট্রোলার
 exports.getAttendanceHistory = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const userId = req.user._id || req.user.id;
+    const history = await Attendance.find({ userId })
+      .populate('subjectId', 'name code') // Subject-এর নাম ও কোড আনার জন্য
+      .sort({ createdAt: -1 }); // নতুনগুলো আগে দেখাবে
 
-    const userId = req.user._id;
-    const userRole = req.user.role;
-
-    let query = {};
-
-    // স্টুডেন্ট শুধু তার নিজের হিস্ট্রি দেখতে পাবে, টিচার সবার ডাটা দেখতে পাবে
-    if (userRole === 'Student') {
-      query.student = userId;
-    }
-
-    const totalLogs = await Attendance.countDocuments(query);
-    const logs = await Attendance.find(query)
-      .populate('student', 'username email')
-      .populate('teacher', 'username email')
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      logs,
-      currentPage: page,
-      totalPages: Math.ceil(totalLogs / limit),
-      totalLogs,
-    });
+    res.status(200).json(history);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Fetch History Error:', error);
+    res.status(500).json({ message: 'Error fetching history', error: error.message });
   }
 };

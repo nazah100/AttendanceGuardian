@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 
-const API_BASE_URL = 'http://10.174.251.239:5000/api/auth';
+const API_BASE_URL = 'http://10.174.251.239:5000';
 
 const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');

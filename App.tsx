@@ -1,66 +1,42 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import AuthScreen from './src/screens/AuthScreen';
-import DashboardScreen from './src/screens/DashboardScreen';
-import AttendanceScreen from './src/screens/AttendanceScreen'; // 👈 ১. নতুন স্ক্রিন ইমপোর্ট করা হলো
+import TabNavigator from './src/navigation/TabNavigator';
 import SubjectDetailScreen from './src/screens/SubjectDetailScreen';
+import AddSubjectScreen from './src/screens/AddSubjectScreen';
+import AuthScreen from './src/screens/AuthScreen'; // <-- ১. AuthScreen ইম্পোর্ট করুন
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const [initialRoute, setInitialRoute] = useState<string | null>(null);
-
-  useEffect(() => {
-    // অ্যাপ চালু হলে সেভ থাকা টোকেন চেক করবে
-    const checkToken = async () => {
-      try {
-        const token = await AsyncStorage.getItem('userToken');
-        if (token) {
-          setInitialRoute('Dashboard');
-        } else {
-          setInitialRoute('Auth');
-        }
-      } catch (e) {
-        setInitialRoute('Auth');
-      }
-    };
-
-    checkToken();
-  }, []);
-
-  if (initialRoute === null) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#38BDF8" />
-      </View>
-    );
-  }
-
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false }}
+        initialRouteName="Auth" // <-- ২. প্রথম স্ক্রিন হিসেবে Auth (লগইন) সেট করুন
+        screenOptions={{
+          headerStyle: { backgroundColor: '#0F172A' },
+          headerTintColor: '#FFFFFF',
+          headerTitleStyle: { fontWeight: 'bold' },
+        }}
       >
-        <Stack.Screen name="Auth" component={AuthScreen} />
-        <Stack.Screen name="Dashboard" component={DashboardScreen} />
-        {/* 👈 ২. AttendanceScreen স্ট্যাকে যুক্ত করা হলো */}
-        <Stack.Screen name="Attendance" component={AttendanceScreen} />
-        <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen} />
+        {/* ৩. লগইন / রেজিস্ট্রেশন স্ক্রিন */}
+        <Stack.Screen 
+          name="Auth" 
+          component={AuthScreen} 
+          options={{ headerShown: false }} 
+        />
+
+        {/* ৪. মেইন অ্যাপ / ট্যাব নেভিগেটর */}
+        <Stack.Screen 
+          name="MainTabs" 
+          component={TabNavigator} 
+          options={{ headerShown: false }} 
+        />
+
+        <Stack.Screen name="SubjectDetail" component={SubjectDetailScreen} options={{ title: 'Subject Details' }} />
+        <Stack.Screen name="AddSubject" component={AddSubjectScreen} options={{ title: 'Add Subject' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

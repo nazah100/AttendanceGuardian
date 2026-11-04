@@ -2,72 +2,47 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
+  TextInput,
+  StyleSheet,
   ScrollView,
   Alert,
-  TextInput,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function SubjectDetailScreen({ route }: any) {
-  const subjectName = route?.params?.subjectName || 'Select Subject';
+export default function SubjectDetailScreen({ route, navigation }: any) {
+  const { subject } = route.params || {};
 
-  // Dynamic Attendance States (প্রাথমিক অবস্থায় ০ থাকবে)
-  const [totalClasses, setTotalClasses] = useState(0);
-  const [attendedClasses, setAttendedClasses] = useState(0);
+  const subjectId = subject?._id;
+  const subjectCode = subject?.code || 'CSE510';
+  const MIN_ATTENDANCE_TARGET = 75;
 
-  // User Custom Input States
-  const [inputTotal, setInputTotal] = useState('');
-  const [inputAttended, setInputAttended] = useState('');
+  // Dynamic States
+  const [totalClasses, setTotalClasses] = useState<number>(subject?.totalClasses || 0);
+  const [attendedClasses, setAttendedClasses] = useState<number>(subject?.attendedClasses || 0);
 
-  // Weekday Routine States
-  const [selectedDays, setSelectedDays] = useState<string[]>(['Sunday', 'Tuesday']);
-  const [classTime, setClassTime] = useState('10:00 AM');
-  const [inputTime, setInputTime] = useState('');
+  // Editable Input States
+  const [totalInput, setTotalInput] = useState<string>(String(subject?.totalClasses || 0));
+  const [attendedInput, setAttendedInput] = useState<string>(String(subject?.attendedClasses || 0));
 
-  const currentPercentage = totalClasses > 0 ? Math.round((attendedClasses / totalClasses) * 100) : 0;
-  const percentageIfSkip = totalClasses > 0 ? Math.round((attendedClasses / (totalClasses + 1)) * 100) : 0;
+  const [durationMinutes, setDurationMinutes] = useState<string>(
+    subject?.duration ? String(subject.duration) : '45'
+  );
 
-  // Safe Calculator Function to avoid Infinite Loop
-  const calculateClassesToReachTarget = (targetPercent: number) => {
-    if (totalClasses === 0) return 0;
-    if ((attendedClasses / totalClasses) * 100 >= targetPercent) return 0;
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    subject?.routineDays || ['Sun', 'Tue']
+  );
+  const [classTime, setClassTime] = useState<string>(subject?.classTime || '12:20 PM - 1:05 PM');
+  const [loading, setLoading] = useState<boolean>(false);
 
-    let addAttended = 0;
-    while (
-      ((attendedClasses + addAttended) / (totalClasses + addAttended)) * 100 < targetPercent &&
-      addAttended < 100
-    ) {
-      addAttended++;
-    }
-    return addAttended;
-  };
+  const daysList = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  const neededFor75 = calculateClassesToReachTarget(75);
+  // Calculate Attendance Weight
+  const durationNum = parseInt(durationMinutes) || 45;
+  const incrementValue = Math.round(durationNum / 45) || 1;
 
-  // User Dynamic Attendance Set Handler
-  const handleSetAttendance = () => {
-    const total = parseInt(inputTotal, 10);
-    const attended = parseInt(inputAttended, 10);
-
-    if (isNaN(total) || isNaN(attended)) {
-      Alert.alert('Notice', 'অনুগ্রহ করে সঠিক সংখ্যা লিখুন');
-      return;
-    }
-
-    if (attended > total) {
-      Alert.alert('Error', 'Attended class, Total class-এর চেয়ে বেশি হতে পারে না!');
-      return;
-    }
-
-    setTotalClasses(total);
-    setAttendedClasses(attended);
-    setInputTotal('');
-    setInputAttended('');
-    Alert.alert('Success', 'অ্যাটেনডেন্স সফলভাবে সেট করা হয়েছে!');
-  };
-
+  // Day Toggle Handler
   const toggleDay = (day: string) => {
     if (selectedDays.includes(day)) {
       setSelectedDays(selectedDays.filter((d) => d !== day));
@@ -76,222 +51,413 @@ export default function SubjectDetailScreen({ route }: any) {
     }
   };
 
-  const handleSaveTime = () => {
-    if (!inputTime.trim()) {
-      Alert.alert('Notice', 'ক্লাসের সময় লিখুন');
-      return;
-    }
-    setClassTime(inputTime.trim());
-    setInputTime('');
-    Alert.alert('Success', 'ক্লাসের সময় আপডেট করা হয়েছে!');
+  // Present Handler
+  const handleMarkPresent = () => {
+    navigation.navigate('Attendance', {
+      subject: subjectCode,
+      subjectId: subjectId,
+      incrementValue: incrementValue,
+      duration: durationNum,
+    });
   };
 
-  const handleSkipCheck = () => {
+  // Absent Handler
+  const handleMarkAbsent = async () => {
+    const newTotal = totalClasses + incrementValue;
+    setTotalClasses(newTotal);
+    setTotalInput(String(newTotal));
+
+    if (subjectId) {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        await fetch(`http://10.174.251.239:5000/api/subjects/update/${subjectId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            totalClasses: newTotal,
+          }),
+        });
+      } catch (error) {
+        console.log('Error updating absent count:', error);
+      }
+    }
+
     Alert.alert(
-      'Can I Skip Today?',
-      `If you skip class today, your attendance will drop from ${currentPercentage}% to ${percentageIfSkip}%.`
+      'Marked Absent',
+      `Class marked as Absent. Total classes increased by +${incrementValue} (${durationNum} mins period).`
     );
   };
 
-  const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // Save Settings & Auto Back Handler
+  const handleSaveRoutine = async () => {
+    const parsedTotal = parseInt(totalInput) || 0;
+    const parsedAttended = parseInt(attendedInput) || 0;
+
+    if (parsedAttended > parsedTotal) {
+      Alert.alert('Error', 'Attended classes cannot be greater than Total classes!');
+      return;
+    }
+
+    setTotalClasses(parsedTotal);
+    setAttendedClasses(parsedAttended);
+
+    if (!subjectId) {
+      Alert.alert('Success', 'Settings updated locally!');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const token = await AsyncStorage.getItem('userToken');
+      
+      const response = await fetch('http://10.174.251.239:5000/api/subjects/update/${subjectId}', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          totalClasses: parsedTotal,
+          attendedClasses: parsedAttended,
+          routineDays: selectedDays,
+          classTime: classTime,
+          duration: durationNum,
+        }),
+      });
+
+      if (response.ok) {
+        Alert.alert('Success', 'Settings updated successfully!', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      } else {
+        Alert.alert('Error', 'Failed to update settings on server');
+      }
+    } catch (error) {
+      console.log('Update Settings Error:', error);
+      Alert.alert('Error', 'Network or server error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Attendance Calculations
+  const currentPercentage = totalClasses > 0 ? Math.round((attendedClasses / totalClasses) * 100) : 0;
+
+  let neededClassesFor75 = 0;
+  if (currentPercentage < MIN_ATTENDANCE_TARGET && totalClasses > 0) {
+    neededClassesFor75 = Math.ceil(
+      (MIN_ATTENDANCE_TARGET * totalClasses - 100 * attendedClasses) / (100 - MIN_ATTENDANCE_TARGET)
+    );
+    if (neededClassesFor75 < 0) neededClassesFor75 = 0;
+  }
+
+  const percentageIfSkipped = Math.round((attendedClasses / (totalClasses + incrementValue)) * 100);
+
+  const handleCanISkipToday = () => {
+    if (currentPercentage < MIN_ATTENDANCE_TARGET) {
+      Alert.alert(
+        '⚠️ Cannot Skip!',
+        `Your current attendance is ${currentPercentage}%, which is below ${MIN_ATTENDANCE_TARGET}%.\n\nIf you skip today (${durationNum} mins), it will drop to ${percentageIfSkipped}%!`
+      );
+    } else {
+      Alert.alert(
+        '✅ Safe to Skip!',
+        `Your attendance is ${currentPercentage}%. Skipping today will drop it to ${percentageIfSkipped}%, which is still fine.`
+      );
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Subject Card & Percentage */}
-        <View style={styles.card}>
-          <Text style={styles.subjectCode}>{subjectName}</Text>
-          <Text style={styles.percentageText}>{currentPercentage}%</Text>
-          <Text style={styles.subText}>Total: {totalClasses} | Attended: {attendedClasses}</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      {/* Header Stat Banner */}
+      <View style={styles.headerCard}>
+        <Text style={styles.subjectCode}>{subjectCode}</Text>
+        <Text style={styles.percentageText}>{currentPercentage}%</Text>
+        <Text style={styles.subtext}>
+          Total: {totalClasses} | Attended: {attendedClasses}
+        </Text>
+      </View>
+
+      {/* Warnings & Targets */}
+      <View style={styles.warningBox}>
+        <Text style={styles.warningText}>
+          ⚠️ Missing 1 class period will drop your attendance to {percentageIfSkipped}%!
+        </Text>
+      </View>
+
+      {neededClassesFor75 > 0 && (
+        <View style={styles.successBox}>
+          <Text style={styles.successText}>
+            🎯 Attend {neededClassesFor75} more classes in a row to reach {MIN_ATTENDANCE_TARGET}%!
+          </Text>
+        </View>
+      )}
+
+      {/* Edit Stats & Routine */}
+      <View style={styles.routineSection}>
+        <Text style={styles.sectionTitle}>Edit Stats & Routine Settings:</Text>
+
+        <Text style={styles.inputLabel}>Total Classes:</Text>
+        <TextInput
+          style={styles.timeInput}
+          keyboardType="numeric"
+          value={totalInput}
+          onChangeText={setTotalInput}
+        />
+
+        <Text style={styles.inputLabel}>Attended Classes:</Text>
+        <TextInput
+          style={styles.timeInput}
+          keyboardType="numeric"
+          value={attendedInput}
+          onChangeText={setAttendedInput}
+        />
+
+        <Text style={styles.inputLabel}>Select Class Days:</Text>
+        <View style={styles.daysRow}>
+          {daysList.map((day) => {
+            const isSelected = selectedDays.includes(day);
+            return (
+              <TouchableOpacity
+                key={day}
+                style={[styles.dayChip, isSelected && styles.selectedDayChip]}
+                onPress={() => toggleDay(day)}
+              >
+                <Text style={[styles.dayText, isSelected && styles.selectedDayText]}>
+                  {day}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* User Attendance Input Section */}
-        <View style={styles.inputSection}>
-          <Text style={styles.sectionTitle}>Set Your Initial Attendance:</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.numInput}
-              placeholder="Total Classes"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-              value={inputTotal}
-              onChangeText={setInputTotal}
-            />
-            <TextInput
-              style={styles.numInput}
-              placeholder="Attended Classes"
-              placeholderTextColor="#94a3b8"
-              keyboardType="numeric"
-              value={inputAttended}
-              onChangeText={setInputAttended}
-            />
-            <TouchableOpacity style={styles.setBtn} onPress={handleSetAttendance}>
-              <Text style={styles.setBtnText}>Set</Text>
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.inputLabel}>Class Time (Text):</Text>
+        <TextInput
+          style={styles.timeInput}
+          placeholder="e.g. 12:20 PM - 1:05 PM"
+          placeholderTextColor="#64748B"
+          value={classTime}
+          onChangeText={setClassTime}
+        />
+
+        <Text style={styles.inputLabel}>Class Duration (in Minutes):</Text>
+        <TextInput
+          style={styles.timeInput}
+          placeholder="e.g. 45 or 90"
+          placeholderTextColor="#64748B"
+          keyboardType="numeric"
+          value={durationMinutes}
+          onChangeText={setDurationMinutes}
+        />
+
+        <View style={styles.weightBadge}>
+          <Text style={styles.weightText}>
+            Attendance Count Weight: <Text style={styles.weightHighlight}>+{incrementValue}</Text> period(s)
+          </Text>
         </View>
 
-        {/* Dynamic Warning Box */}
-        {totalClasses > 0 && (
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>
-              ⚠️ Missing 1 class will drop your attendance to {percentageIfSkip}%!
-            </Text>
-          </View>
-        )}
+        <TouchableOpacity style={styles.setTimeBtn} onPress={handleSaveRoutine} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#FFF" size="small" />
+          ) : (
+            <Text style={styles.setTimeBtnText}>Save Settings</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
-        {/* Dynamic Recovery Box */}
-        {totalClasses > 0 && (
-          <View style={styles.successBox}>
-            <Text style={styles.successText}>
-              {neededFor75 > 0
-                ? `✅ Attend ${neededFor75} more classes in a row to reach 75%!`
-                : `🎉 Great! You are already at or above 75%!`}
-            </Text>
-          </View>
-        )}
+      {/* Action Buttons */}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.presentBtn} onPress={handleMarkPresent}>
+          <Text style={styles.btnText}>
+            Mark Present (GPS Attendance) [+{incrementValue}]
+          </Text>
+        </TouchableOpacity>
 
-        {/* Weekly Routine Setup */}
-        <View style={styles.inputSection}>
-          <Text style={styles.sectionTitle}>Set Weekly Routine:</Text>
-          <Text style={styles.inputLabel}>Select Days:</Text>
-          <View style={styles.dayContainer}>
-            {weekDays.map((day) => {
-              const isSelected = selectedDays.includes(day);
-              return (
-                <TouchableOpacity
-                  key={day}
-                  style={[styles.dayChip, isSelected && styles.dayChipSelected]}
-                  onPress={() => toggleDay(day)}
-                >
-                  <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>
-                    {day.substring(0, 3)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        <TouchableOpacity style={styles.absentBtn} onPress={handleMarkAbsent}>
+          <Text style={styles.btnText}>Mark Absent (+{incrementValue})</Text>
+        </TouchableOpacity>
 
-          <Text style={styles.inputLabel}>Class Time (Current: {classTime}):</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.numInput}
-              placeholder="e.g. 10:00 AM"
-              placeholderTextColor="#94a3b8"
-              value={inputTime}
-              onChangeText={setInputTime}
-            />
-            <TouchableOpacity style={styles.setBtn} onPress={handleSaveTime}>
-              <Text style={styles.setBtnText}>Set Time</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Interactive Attendance Action Buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.presentBtn}
-            onPress={() => {
-              setAttendedClasses((prev) => prev + 1);
-              setTotalClasses((prev) => prev + 1);
-            }}
-          >
-            <Text style={styles.btnText}>Mark Present (+1)</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.absentBtn}
-            onPress={() => setTotalClasses((prev) => prev + 1)}
-          >
-            <Text style={styles.btnText}>Mark Absent (+1)</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Skip Predictor Button */}
-        <TouchableOpacity style={styles.skipBtn} onPress={handleSkipCheck}>
+        <TouchableOpacity style={styles.skipBtn} onPress={handleCanISkipToday}>
           <Text style={styles.skipBtnText}>Can I skip today?</Text>
         </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  scrollContent: { padding: 16 },
-  card: {
-    backgroundColor: '#1e293b',
-    padding: 24,
+  container: {
+    flexGrow: 1,
+    backgroundColor: '#0F172A',
+    padding: 20,
+  },
+  headerCard: {
+    backgroundColor: '#1E293B',
     borderRadius: 16,
+    padding: 20,
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#334155',
   },
-  subjectCode: { color: '#94a3b8', fontSize: 18, fontWeight: '600' },
-  percentageText: { color: '#ffffff', fontSize: 42, fontWeight: 'bold', marginVertical: 8 },
-  subText: { color: '#64748b', fontSize: 14 },
-  inputSection: { backgroundColor: '#1e293b', padding: 14, borderRadius: 12, marginBottom: 16 },
-  sectionTitle: { color: '#f8fafc', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  inputLabel: { color: '#94a3b8', fontSize: 13, marginBottom: 6 },
-  inputRow: { flexDirection: 'row', gap: 8 },
-  numInput: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-    color: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
+  subjectCode: {
+    color: '#94A3B8',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  percentageText: {
+    color: '#F8FAFC',
+    fontSize: 52,
+    fontWeight: 'bold',
+    marginVertical: 6,
+  },
+  subtext: {
+    color: '#64748B',
+    fontSize: 13,
+  },
+  warningBox: {
+    backgroundColor: '#451A03',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#78350F',
+  },
+  warningText: {
+    color: '#FDE047',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  successBox: {
+    backgroundColor: '#064E3B',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#065F46',
+  },
+  successText: {
+    color: '#6EE7B7',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  routineSection: {
+    backgroundColor: '#1E293B',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#334155',
   },
-  setBtn: {
-    backgroundColor: '#0284c7',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderRadius: 6,
-  },
-  setBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
-  warningBox: {
-    backgroundColor: '#451a03',
-    borderColor: '#78350f',
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 10,
+  sectionTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 12,
   },
-  warningText: { color: '#fde047', fontSize: 14, fontWeight: '500' },
-  successBox: {
-    backgroundColor: '#064e3b',
-    borderColor: '#065f46',
-    borderWidth: 1,
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 16,
+  inputLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginBottom: 6,
+    marginTop: 6,
   },
-  successText: { color: '#6ee7b7', fontSize: 14, fontWeight: '500' },
-  dayContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  daysRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
   dayChip: {
-    paddingHorizontal: 10,
+    backgroundColor: '#0F172A',
     paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 6,
-    backgroundColor: '#0f172a',
     borderWidth: 1,
     borderColor: '#334155',
   },
-  dayChipSelected: { backgroundColor: '#0284c7', borderColor: '#0284c7' },
-  dayText: { color: '#94a3b8', fontSize: 12, fontWeight: '500' },
-  dayTextSelected: { color: '#ffffff', fontWeight: 'bold' },
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  presentBtn: { flex: 1, backgroundColor: '#16a34a', padding: 14, borderRadius: 8, marginRight: 6, alignItems: 'center' },
-  absentBtn: { flex: 1, backgroundColor: '#dc2626', padding: 14, borderRadius: 8, marginLeft: 6, alignItems: 'center' },
-  btnText: { color: '#ffffff', fontWeight: 'bold' },
-  skipBtn: {
-    backgroundColor: '#0284c7',
-    padding: 16,
-    borderRadius: 10,
+  selectedDayChip: {
+    backgroundColor: '#0284C7',
+    borderColor: '#38BDF8',
+  },
+  dayText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  selectedDayText: {
+    color: '#FFFFFF',
+  },
+  timeInput: {
+    backgroundColor: '#0F172A',
+    color: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 8,
+  },
+  weightBadge: {
+    backgroundColor: '#0F172A',
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#0284C7',
+  },
+  weightText: {
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  weightHighlight: {
+    color: '#38BDF8',
+    fontSize: 15,
+  },
+  setTimeBtn: {
+    backgroundColor: '#0284C7',
+    paddingVertical: 12,
+    borderRadius: 8,
     alignItems: 'center',
+  },
+  setTimeBtnText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  buttonContainer: {
+    gap: 12,
     marginBottom: 20,
   },
-  skipBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  presentBtn: {
+    backgroundColor: '#16A34A',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  absentBtn: {
+    backgroundColor: '#DC2626',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  skipBtn: {
+    backgroundColor: '#0284C7',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  btnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  skipBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
 });

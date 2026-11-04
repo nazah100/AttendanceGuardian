@@ -1,153 +1,220 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
+  Text,
   TouchableOpacity,
-  SafeAreaView,
-  Alert,
+  FlatList,
+  StyleSheet,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
-const API_BASE_URL = 'http://10.174.251.239:5000/api/auth';
-
-interface UserProfile {
+interface Subject {
   _id: string;
-  username: string;
-  email: string;
-  role?: string;
+  id?: string;
+  name: string;
+  code: string;
+  totalClasses: number;
+  attendedClasses?: number;
 }
 
-export default function DashboardScreen({ route, navigation }: any) {
-  const [user, setUser] = useState<UserProfile | null>(route?.params?.user || null);
-  const [loading, setLoading] = useState(!route?.params?.user);
+export default function DashboardScreen({ navigation }: any) {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    if (!user) {
-      fetchUserProfile();
-    }
-  }, []);
-
-  const fetchUserProfile = async () => {
+  const fetchSubjects = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        navigation.replace('Auth');
-        return;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/me`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+const response = await fetch('http://10.174.251.239:5000/api/subjects',
+   {
+          headers: { Authorization: `Bearer ${token}` },
       });
-
       const data = await response.json();
+      
       if (response.ok) {
-        setUser(data);
-      } else {
-        Alert.alert('Session Expired', 'Please login again.');
-        await AsyncStorage.removeItem('userToken');
-        navigation.replace('Auth');
+        if (Array.isArray(data)) {
+          setSubjects(data);
+        } else if (data.subjects && Array.isArray(data.subjects)) {
+          setSubjects(data.subjects);
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load user profile');
+      console.log('Error fetching subjects:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem('userToken');
-    Alert.alert('Logged Out', 'You have been logged out successfully.');
-    navigation.replace('Auth');
+  // Screen-e back ashlei Auto-Refresh hbe
+  useFocusEffect(
+    useCallback(() => {
+      fetchSubjects();
+    }, [])
+  );
+
+  // Overall Stat Calculation
+  const totalClassesSum = subjects.reduce((acc, curr) => acc + (curr.totalClasses || 0), 0);
+  const attendedClassesSum = subjects.reduce((acc, curr) => acc + (curr.attendedClasses || 0), 0);
+  const overallPercentage = totalClassesSum > 0 ? Math.round((attendedClassesSum / totalClassesSum) * 100) : 0;
+
+  const renderSubjectCard = ({ item }: { item: Subject }) => {
+    const attended = item.attendedClasses || 0;
+    const total = item.totalClasses || 0;
+    const percentage = total > 0 ? Math.round((attended / total) * 100) : 0;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => navigation.navigate('SubjectDetail', { subject: item })}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.subjectCode}>{item.code}</Text>
+          <Text style={styles.percentageText}>{percentage}%</Text>
+        </View>
+        <Text style={styles.subjectName}>{item.name}</Text>
+        <Text style={styles.statText}>Total: {total} | Attended: {attended}</Text>
+      </TouchableOpacity>
+    );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#38BDF8" />
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.innerContainer}>
-        {/* Profile Card */}
-        <View style={styles.card}>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.nameText}>{user?.username || 'User'}</Text>
-          <Text style={styles.emailText}>{user?.email}</Text>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>{user?.role || 'Student'}</Text>
-          </View>
-        </View>
+    <View style={styles.container}>
+      {/* Upper Overall Percentage & Stats Banner */}
+      <View style={styles.banner}>
+        <Text style={styles.bannerTitle}>Overall Attendance</Text>
+        <Text style={styles.bannerPercentage}>{overallPercentage}%</Text>
+        <Text style={styles.bannerSubtext}>
+          Total Classes: {totalClassesSum} | Attended: {attendedClassesSum}
+        </Text>
+      </View>
 
-        {/* Action Section */}
-        <View style={styles.actionContainer}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('Attendance')}
-          >
-            <Text style={styles.primaryButtonText}>
-              {user?.role === 'Teacher' ? 'Take Attendance' : 'Give Attendance'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
+      {/* Header and Add Subject Button */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Your Courses</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => navigation.navigate('AddSubject')}
+        >
+          <Text style={styles.addButtonText}>+ Add Subject</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+
+      {/* Subject List */}
+      {loading ? (
+        <ActivityIndicator color="#38BDF8" size="large" style={{ marginTop: 40 }} />
+      ) : (
+        <FlatList
+          data={subjects}
+          keyExtractor={(item, index) => item._id || item.id || index.toString()}
+          renderItem={renderSubjectCard}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => { setRefreshing(true); fetchSubjects(); }} 
+              tintColor="#38BDF8"
+            />
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No subjects added yet. Click + Add Subject above!</Text>
+          }
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
-  loadingContainer: { flex: 1, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center' },
-  innerContainer: { flex: 1, padding: 24, justifyContent: 'space-between' },
-  card: {
+  container: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    padding: 20,
+  },
+  banner: {
     backgroundColor: '#1E293B',
-    padding: 24,
     borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#334155',
-    marginTop: 20,
   },
-  welcomeText: { fontSize: 14, color: '#94A3B8' },
-  nameText: { fontSize: 28, fontWeight: 'bold', color: '#F8FAFC', marginVertical: 4 },
-  emailText: { fontSize: 14, color: '#64748B', marginBottom: 12 },
-  roleBadge: {
-    alignSelf: 'flex-start',
+  bannerTitle: {
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  bannerPercentage: {
+    color: '#F8FAFC',
+    fontSize: 42,
+    fontWeight: 'bold',
+    marginVertical: 5,
+  },
+  bannerSubtext: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  addButton: {
     backgroundColor: '#0284C7',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
   },
-  roleText: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
-  actionContainer: { marginVertical: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#CBD5E1', marginBottom: 12 },
-  primaryButton: {
-    backgroundColor: '#0369A1',
+  addButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  card: {
+    backgroundColor: '#1E293B',
     padding: 16,
     borderRadius: 12,
-    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
-  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  logoutButton: {
-    height: 50,
-    backgroundColor: '#EF4444',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
-  logoutText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  subjectCode: {
+    color: '#38BDF8',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  percentageText: {
+    color: '#34D399',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  subjectName: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  statText: {
+    color: '#94A3B8',
+    fontSize: 12,
+  },
+  emptyText: {
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 30,
+  },
 });

@@ -55,7 +55,7 @@ export default function AuthScreen({ navigation }: any) {
             await AsyncStorage.setItem('userToken', data.token);
           }
           
-          navigation.replace('Dashboard', { user: data.user, token: data.token });
+          navigation.replace('MainTabs', { user: data.user, token: data.token });
         } else {
           Alert.alert('Success', 'রেজিস্ট্রেশন সফল হয়েছে! এখন লগইন করুন।');
           setIsLogin(true);
